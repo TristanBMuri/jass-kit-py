@@ -4,60 +4,17 @@
 #
 import logging
 import numpy as np
-from jass.agents.agent import Agent
-from jass.game.const import *
-from jass.game.game_observation import GameObservation
-from jass.game.game_sim import GameSim
-from jass.game.game_util import *
-from jass.game.rule_schieber import RuleSchieber
+import unittest
 
 
-class AgentRuleBased(Agent):
+class AgentRuleBased:
     """
     Select rule based actions for the game of jass (Schieber)
     """
 
     def __init__(self):
-        super().__init__()
-        # we need a rule object to determine the valid cards
-        self._rule = RuleSchieber()
+        # Set up logging
         self._logger = logging.getLogger(__name__)
-
-    def action_trump(self, obs: GameObservation) -> int:
-        """
-        Determine trump action for the given observation
-        Args:
-            obs: the game observation, it must be in a state for trump selection
-
-        Returns:
-            selected trump as encoded in jass.game.const or jass.game.const.PUSH
-        """
-        # add your code here using the function above
-        if obs.forehand == -1:
-            # If forehand is not yet set, we are the forehand player and can select trump or push
-            trump_scores = [0] * 6
-            for i in range(6):
-                trump_scores[i] = self.calculate_gap_consideration(obs.hand, i) * 5
-                if i <= 3:  # For suits (Diamonds, Hearts, Spades, Clubs)
-                    trump_scores[i] += self.calculate_score_for_suit(obs.hand, i, i)
-                elif i == 4:  # Obenabe
-                    for suit in range(4):
-                        trump_scores[i] += self.calculate_score_for_suit(obs.hand, i, suit)
-                elif i == 5:  # Uneufe
-                    for suit in range(4):
-                        trump_scores[i] += self.calculate_score_for_suit(obs.hand, i, suit)
-
-            # Select the trump with the highest score
-            result = int(trump_scores.index(max(trump_scores)))
-            print("Trump selection scores:", trump_scores)
-            print("Selected trump result:", result)
-
-            if max(trump_scores) < 50:  # Adjust the threshold as needed
-                self._logger.info('Result: {}'.format(PUSH))
-                return PUSH
-
-            self._logger.info('Result: {}'.format(result))
-            return result
 
     def calculate_score_for_suit(self, cards, trump: int, suit: int) -> int:
         """
@@ -179,16 +136,76 @@ class AgentRuleBased(Agent):
 
         return guaranteed_games - gap_penalty
 
-    def action_play_card(self, obs: GameObservation) -> int:
+    def action_trump(self, obs) -> int:
         """
-        Determine the card to play.
-
+        Determine trump action for the given observation
         Args:
-            obs: the game observation
+            obs: the game observation, it must be in a state for trump selection
 
         Returns:
-            the card to play, int encoded as defined in jass.game.const
+            selected trump as encoded in jass.game.const or jass.game.const.PUSH
         """
-        valid_cards = self._rule.get_valid_cards_from_obs(obs)
-        # we use the global random number generator here
-        return np.random.choice(np.flatnonzero(valid_cards))
+        if obs.forehand == -1:
+            # If forehand is not yet set, we are the forehand player and can select trump or push
+            trump_scores = [0] * 6
+            for i in range(6):
+                trump_scores[i] = self.calculate_gap_consideration(obs.hand, i) * 5
+                if i <= 3:  # For suits (Diamonds, Hearts, Spades, Clubs)
+                    trump_scores[i] += self.calculate_score_for_suit(obs.hand, i, i)
+                elif i == 4:  # Obenabe
+                    for suit in range(4):
+                        trump_scores[i] += self.calculate_score_for_suit(obs.hand, i, suit)
+                elif i == 5:  # Uneufe
+                    for suit in range(4):
+                        trump_scores[i] += self.calculate_score_for_suit(obs.hand, i, suit)
+
+            # Select the trump with the highest score
+            result = int(trump_scores.index(max(trump_scores)))
+            print("Trump selection scores:", trump_scores)
+            print("Selected trump result:", result)
+
+            if max(trump_scores) < 50:  # Adjust the threshold as needed
+                self._logger.info('Result: {}'.format(PUSH))
+                return PUSH
+
+            self._logger.info('Result: {}'.format(result))
+            return result
+
+
+class TestAgentRuleBased(unittest.TestCase):
+
+    def setUp(self):
+        self.agent = AgentRuleBased()
+
+    def test_calculate_guaranteed_games_hand_1(self):
+        # Test hand 1: (Diamonds: A, K, 9, 6; Hearts: A, Q, J, 8, 7)
+        hand = [1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0]
+        trump = 1  # Hearts
+        expected_guaranteed_games = 5  # Expected number of guaranteed games based on high cards
+        result = self.agent.calculate_guaranteed_games(hand, trump)
+        self.assertEqual(result, expected_guaranteed_games)
+
+    def test_calculate_guaranteed_games_hand_2(self):
+        # Test hand 2: (Diamonds: A, 10, J; Hearts: K, Q; Spades: A, K, 10, 7)
+        hand = [1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0]
+        trump = 2  # Spades
+        expected_guaranteed_games = 4  # Expected number of guaranteed games based on high cards
+        result = self.agent.calculate_guaranteed_games(hand, trump)
+        self.assertEqual(result, expected_guaranteed_games)
+
+    def test_calculate_guaranteed_games_hand_3(self):
+        # Test hand 3: (Hearts: A, K, Q, J, 9, 8, 7; Spades: 10; Clubs: A)
+        hand = [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0]
+        trump = 4  # Obenabe
+        expected_guaranteed_games = 7  # Expected number of guaranteed games based on high cards
+        result = self.agent.calculate_guaranteed_games(hand, trump)
+        self.assertEqual(result, expected_guaranteed_games)
+
+
+if __name__ == "__main__":
+    # Set up logging
+    logging.basicConfig(level=logging.DEBUG)
+    unittest.main()
