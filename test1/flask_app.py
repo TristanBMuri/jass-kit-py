@@ -1,7 +1,6 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 
 from jass.game.game_observation import GameObservation
-from requests import request
 
 from jass.game.game_util import *
 
