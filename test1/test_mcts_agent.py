@@ -2,8 +2,8 @@ import unittest
 
 import numpy as np
 
+from jass.agents.MCTSAgent import MCTSAgent
 from jass.agents.agent_random_schieber import AgentRandomSchieber
-from jass.agents.agent_rule_based import AgentRuleBased
 from jass.arena.arena import Arena
 from jass.game.const import *
 from jass.game.game_sim import GameSim
@@ -11,12 +11,12 @@ from jass.game.game_util import *
 from jass.game.rule_schieber import RuleSchieber
 
 
-class RuleBasedAgentTests(unittest.TestCase):
+class test_mcts_agent(unittest.TestCase):
 
     def test_trump_selection_hand_1(self):
         rule = RuleSchieber()
         game = GameSim(rule=rule)
-        agent = AgentRuleBased()
+        agent = MCTSAgent()
 
         np.random.seed(1)
         game.init_from_cards(hands=deal_random_hand(), dealer=NORTH)
@@ -33,7 +33,7 @@ class RuleBasedAgentTests(unittest.TestCase):
     def test_trump_selection_hand_2(self):
         rule = RuleSchieber()
         game = GameSim(rule=rule)
-        agent = AgentRuleBased()
+        agent = MCTSAgent()
 
         np.random.seed(22)
         game.init_from_cards(hands=deal_random_hand(), dealer=NORTH)
@@ -50,7 +50,7 @@ class RuleBasedAgentTests(unittest.TestCase):
     def test_trump_selection_hand_3(self):
         rule = RuleSchieber()
         game = GameSim(rule=rule)
-        agent = AgentRuleBased()
+        agent = MCTSAgent()
 
         np.random.seed(30)
         game.init_from_cards(hands=deal_random_hand(), dealer=NORTH)
@@ -67,7 +67,7 @@ class RuleBasedAgentTests(unittest.TestCase):
     def test_calculate_guaranteed_games_hand_1(self):
         rule = RuleSchieber()
         game = GameSim(rule=rule)
-        agent = AgentRuleBased()
+        agent = MCTSAgent()
 
         np.random.seed(1)
         game.init_from_cards(hands=deal_random_hand(), dealer=NORTH)
@@ -91,20 +91,20 @@ class RuleBasedAgentTests(unittest.TestCase):
     def test_game_skill(self):
         rule = RuleSchieber()
         game = GameSim(rule=rule)
-        agent = AgentRuleBased()
+        agent = MCTSAgent()
+        mcts_agent = MCTSAgent(max_iterations=50)
 
         np.random.seed(1)
         game.init_from_cards(hands=deal_random_hand(), dealer=NORTH)
 
         arena = Arena(nr_games_to_play=1)
-        arena.set_players(AgentRuleBased(), AgentRandomSchieber(), AgentRuleBased(), AgentRandomSchieber())
+        arena.set_players(mcts_agent, AgentRandomSchieber(), mcts_agent, AgentRandomSchieber())
 
         arena.play_all_games()
 
         print(arena.points_team_0.sum(), arena.points_team_1.sum())
 
         assert arena.points_team_0.sum() > arena.points_team_1.sum()
-
 
 if __name__ == '__main__':
     unittest.main()

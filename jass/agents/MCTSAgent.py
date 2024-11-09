@@ -4,6 +4,9 @@
 #
 import logging
 import numpy as np
+
+from jass.agents.Helpers.MCTS import MCTS
+from jass.agents.Helpers.Node import Node
 from jass.agents.agent import Agent
 from jass.game.const import *
 from jass.game.game_observation import GameObservation
@@ -11,22 +14,11 @@ from jass.game.game_sim import GameSim
 from jass.game.game_util import *
 from jass.game.rule_schieber import RuleSchieber
 
-
-class AgentRuleBased(Agent):
-    """
-    Select rule based actions for the game of jass (Schieber)
-    """
-    trump_score = [15, 10, 7, 25, 6, 19, 5, 5, 5]
-    no_trump_score = [9, 7, 5, 2, 1, 0, 0, 0, 0]
-    obenabe_score = [14, 10, 8, 7, 5, 0, 5, 0, 0]
-    uneufe_score = [0, 2, 1, 1, 5, 5, 7, 9, 11]
-
-    def __init__(self):
+class MCTSAgent(Agent):
+    def __init__(self, max_iterations=100):
         super().__init__()
-        # we need a rule object to determine the valid cards
-        self._rng = np.random.default_rng()
+        self.max_iterations = max_iterations
         self._rule = RuleSchieber()
-        self._logger = logging.getLogger(__name__)
 
     def action_trump(self, obs: GameObservation) -> int:
         """
@@ -58,10 +50,8 @@ class AgentRuleBased(Agent):
             print("Selected trump result:", result)
 
             if max(trump_scores) < 50:  # Adjust the threshold as needed
-                self._logger.info('Result: {}'.format(PUSH))
                 return PUSH
 
-            self._logger.info('Result: {}'.format(result))
             return result
 
     def calculate_score_for_suit(self, cards, trump: int, suit: int) -> int:
@@ -75,6 +65,11 @@ class AgentRuleBased(Agent):
         Returns:
             score for the selected suit
         """
+        # Scoring systems
+        trump_score = [15, 10, 7, 25, 6, 19, 5, 5, 5]
+        no_trump_score = [9, 7, 5, 2, 1, 0, 0, 0, 0]
+        obenabe_score = [14, 10, 8, 7, 5, 0, 5, 0, 0]
+        uneufe_score = [0, 2, 1, 1, 5, 5, 7, 9, 11]
 
         score = 0
         for i in range(9):
@@ -83,16 +78,13 @@ class AgentRuleBased(Agent):
                 # Determine score based on trump type
                 if trump <= 3:  # One of the suits (Diamonds, Hearts, Spades, Clubs)
                     if suit == trump:
-                        score += self.trump_score[i]
+                        score += trump_score[i]
                     else:
                         continue  # Skip non-trump suits when evaluating a specific trump
                 elif trump == 4:  # Obenabe
-                    score += self.obenabe_score[i]
+                    score += obenabe_score[i]
                 elif trump == 5:  # Uneufe
-                    score += self.uneufe_score[i]
-
-                # Debug output to trace computation
-                self._logger.debug(f"Suit {suit}, Rank {i}, Current Score: {score}")
+                    score += uneufe_score[i]
 
         return score
 
@@ -107,6 +99,9 @@ class AgentRuleBased(Agent):
             Number of guaranteed winning cards (bocks)
         """
         guaranteed_games = 0
+        trump_score = [15, 10, 7, 25, 6, 19, 5, 5, 5]  # Assume standard trump score
+        obenabe_score = [14, 10, 8, 7, 5, 0, 5, 0, 0]
+        uneufe_score = [0, 2, 1, 1, 5, 5, 7, 9, 11]
 
         for i in range(4):  # Iterate over the four suits
             consecutive_high_cards = 0  # Track consecutive high cards
@@ -116,21 +111,21 @@ class AgentRuleBased(Agent):
                     # If the card belongs to the trump suit
                     if trump <= 3:  # One of the suits (Diamonds, Hearts, Spades, Clubs)
                         # High-value cards are guaranteed winning cards (bocks)
-                        if self.trump_score[j] >= 15:  # Arbitrary threshold for "guaranteed game"
+                        if trump_score[j] >= 15:  # Arbitrary threshold for "guaranteed game"
                             guaranteed_games += 1
                             consecutive_high_cards += 1
                         elif consecutive_high_cards >= 3:  # Forced play scenario - next card is likely to win
                             guaranteed_games += 1
                     elif trump == 4:  # Obenabe
                         # High cards are guaranteed in obenabe
-                        if self.obenabe_score[j] >= 7:  # More flexible threshold for "guaranteed game" in obenabe
+                        if obenabe_score[j] >= 7:  # More flexible threshold for "guaranteed game" in obenabe
                             guaranteed_games += 1
                             consecutive_high_cards += 1
                         elif consecutive_high_cards >= 3:  # Forced play scenario
                             guaranteed_games += 1
                     elif trump == 5:  # Uneufe
                         # Low cards are guaranteed in uneufe
-                        if self.uneufe_score[j] >= 7:  # Arbitrary threshold for "guaranteed game" in uneufe
+                        if uneufe_score[j] >= 7:  # Arbitrary threshold for "guaranteed game" in uneufe
                             guaranteed_games += 1
                             consecutive_high_cards += 1
                         elif consecutive_high_cards >= 3:  # Forced play scenario
@@ -178,87 +173,31 @@ class AgentRuleBased(Agent):
 
     def action_play_card(self, obs: GameObservation) -> int:
         """
-        Determine the card to play.
-
+        Determine the card to play using MCTS.
         Args:
             obs: the game observation
 
         Returns:
             the card to play, int encoded as defined in jass.game.const
         """
-        valid_cards = self._rule.get_valid_cards_from_obs(obs)
 
-        card_to_play = 0
+        mcts = MCTS(obs.player_view)
 
-        # checks if we have the highest trump and if we do we play it
-        if obs.declared_trump < 5:
-            player_tricks = self.get_trump_segment(obs.hand, obs.declared_trump)
-            cards_still_in_play = self.get_cards_still_in_play(obs)
+        root = Node(game_obs=obs)
 
-
-            possible_tricks = self.get_trump_availability(cards_still_in_play, obs)
-            print(player_tricks)
-            print(possible_tricks)
-            highest_player_trick = 0
-            trick_index = 0
-            for i in player_tricks:
-                if player_tricks[i] > 0:
-                    if self.trump_score[i] > highest_player_trick:
-                        highest_player_trick = player_tricks[i]
-                        trick_index = i
-            for i in possible_tricks:
-                if possible_tricks[i] > 0 and player_tricks[i] < 1:
-                    if self.trump_score[i] > highest_player_trick:
-                        highest_player_trick = 0
-
-            if highest_player_trick > 0:
-                print("Uses highest player trick")
-                card_to_play = (trick_index + 9 * (obs.declared_trump -1))
+        for _ in range(self.max_iterations):
+            leaf = mcts.selection(root)
+            child = mcts.expansion(leaf)
+            if child:
+                outcome = mcts.simulate(child.game_obs)
+                mcts.backpropagate(child, outcome)
             else:
-                print("random:",self._rng.choice(np.flatnonzero(valid_cards)))
-                card_to_play = self._rng.choice(np.flatnonzero(valid_cards))
+                outcome = mcts.simulate(leaf.game_obs)
+                mcts.backpropagate(leaf, outcome)
 
-        print("card to play", card_to_play)
-        print("obs hand",obs.hand)
-        print("valid_cards", valid_cards)
-        # valid cards
-        # diffrence between valid tricks and regular cards
-        # if we have highest cards still in play
-        # how many tricks are left - our tricks, if our tem determined trick count vs enemy tricks
+        # print("unplayed cards", self.possible_cards(obs))
 
-        return card_to_play
+        best_move = root.best_child(exploration_param=0).move
+        return best_move
+        # return np.random.choice(np.flatnonzero(valid_cards))
 
-    def get_cards_still_in_play(self, obs):
-        possible_cards = [i for i in range(36)]
-
-        possible_cards = set(possible_cards) ^ set(convert_one_hot_encoded_cards_to_int_encoded_list(obs.hand))
-        if len(obs.tricks[obs.tricks > 0]):
-            possible_cards = set(possible_cards) ^ set(obs.tricks[obs.tricks != -1])
-
-        return possible_cards
-
-    def check_for_bock(self, obs):
-        valid_cards = self._rule.get_valid_cards_from_obs(obs)
-        return len(valid_cards) > 0
-
-
-    def get_trump_segment(self, card_set, trump_segment):
-        card_array = np.array(list(card_set))
-        start = (trump_segment - 1) * 9  # Calculate the starting index
-        end = start + 9  # Calculate the end index (9 cards per segment)
-        return card_array[start:end]
-
-    def get_trump_availability(self, available_trumps, obs: GameObservation):
-        # Create an array of length 36 with all elements initialized to 0
-        trump_availability = [0] * 36
-
-        # Set each index to 1 if it exists in the available_trumps set
-        for index in available_trumps:
-            trump_availability[index] = 1
-
-        # Get the start and end indices based on trump_segment
-        start = (obs.declared_trump - 1) * 9
-        end = start + 9
-
-        # Return only the segment corresponding to the given trump segment
-        return trump_availability[start:end]
