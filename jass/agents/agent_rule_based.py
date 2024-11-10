@@ -3,6 +3,8 @@
 # Created by Thomas Koller on 7/28/2020
 #
 import logging
+from lib2to3.pgen2.tokenize import printtoken
+
 import numpy as np
 from jass.agents.agent import Agent
 from jass.game.const import *
@@ -63,7 +65,21 @@ class AgentRuleBased(Agent):
                 return PUSH
 
             self._logger.info('Result: {}'.format(result))
-            return result
+            print(result)
+            if result == 0:
+                return DIAMONDS
+            if result == 1:
+                return HEARTS
+            if result == 2:
+                return SPADES
+            if result == 3:
+                return CLUBS
+            if result == 4:
+                return OBE_ABE
+            if result == 5:
+                return UNE_UFE
+
+            return PUSH
 
     def calculate_score_for_suit(self, cards, trump: int, suit: int) -> int:
         """
