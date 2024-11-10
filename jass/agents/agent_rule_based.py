@@ -54,8 +54,9 @@ class AgentRuleBased(Agent):
 
             # Select the trump with the highest score
             result = int(trump_scores.index(max(trump_scores)))
-            print("Trump selection scores:", trump_scores)
-            print("Selected trump result:", result)
+            #print("Trump selection scores:", trump_scores)
+            #print("Selected trump result:", result)
+            #print("Push value", PUSH)
 
             if max(trump_scores) < 50:  # Adjust the threshold as needed
                 self._logger.info('Result: {}'.format(PUSH))
@@ -191,14 +192,11 @@ class AgentRuleBased(Agent):
         card_to_play = 0
 
         # checks if we have the highest trump and if we do we play it
-        if obs.declared_trump < 5:
+        if obs.declared_trump < 4:
             player_tricks = self.get_trump_segment(obs.hand, obs.declared_trump)
             cards_still_in_play = self.get_cards_still_in_play(obs)
 
-
             possible_tricks = self.get_trump_availability(cards_still_in_play, obs)
-            print(player_tricks)
-            print(possible_tricks)
             highest_player_trick = 0
             trick_index = 0
             for i in player_tricks:
@@ -212,19 +210,15 @@ class AgentRuleBased(Agent):
                         highest_player_trick = 0
 
             if highest_player_trick > 0:
-                print("Uses highest player trick")
+                # print("Uses highest player trick")
                 card_to_play = (trick_index + 9 * (obs.declared_trump -1))
-            else:
-                print("random:",self._rng.choice(np.flatnonzero(valid_cards)))
-                card_to_play = self._rng.choice(np.flatnonzero(valid_cards))
+                return card_to_play
 
-        print("card to play", card_to_play)
-        print("obs hand",obs.hand)
-        print("valid_cards", valid_cards)
-        # valid cards
-        # diffrence between valid tricks and regular cards
-        # if we have highest cards still in play
-        # how many tricks are left - our tricks, if our tem determined trick count vs enemy tricks
+        cards_still_in_play = self.get_cards_still_in_play(obs)
+        # print(cards_still_in_play)
+        # card_to_play = self._rng.choice(np.flatnonzero(valid_cards))
+        card_to_play = self.play_highest_card(valid_cards)
+        card_to_play = self.check_for_bock(obs)
 
         return card_to_play
 
@@ -238,8 +232,47 @@ class AgentRuleBased(Agent):
         return possible_cards
 
     def check_for_bock(self, obs):
+        # check if there are cards that are valid that aren't trump
+        # if we have the highest value card
+        # we chck if there are tricks left that aren't ours
+        # if there are we check if we have the next highest card as well and play that instead
+        # if we dont have the highest card we play the lowest point value card
+        # Step 1: Get valid cards that can be played
         valid_cards = self._rule.get_valid_cards_from_obs(obs)
-        return len(valid_cards) > 0
+
+        # Step 2: Check for trump suit validity and determine the highest card
+        is_trump = obs.declared_trump < 4  # Check if current game mode is trump (0-3)
+        highest_card = None
+        lowest_card = None
+        lowest_card_value = float('inf')
+
+        # Step 3: Identify the highest and lowest cards among valid cards
+        for card in range(len(valid_cards)):
+            if valid_cards[card] == 1:  # Card is playable
+                # Card rank in suit
+                rank_in_suit = card % 9
+                # Determine if it's a trump card and its score
+                if is_trump and (card // 9 == obs.declared_trump):  # Trump card
+                    card_value = self.trump_score[rank_in_suit]
+                else:  # Non-trump card
+                    card_value = self.no_trump_score[rank_in_suit]
+
+                # Update highest card if this card has a higher value
+                if highest_card is None or card_value > self.no_trump_score[highest_card % 9]:
+                    highest_card = card
+
+                # Update lowest card if this card has a lower value
+                if card_value < lowest_card_value:
+                    lowest_card_value = card_value
+                    lowest_card = card
+
+        # Step 4: Decide which card to play
+        if highest_card is not None:
+            # If we hold the highest card in the current trick context, play it
+            return highest_card
+        else:
+            # Otherwise, play the lowest value card
+            return lowest_card
 
 
     def get_trump_segment(self, card_set, trump_segment):
@@ -262,3 +295,22 @@ class AgentRuleBased(Agent):
 
         # Return only the segment corresponding to the given trump segment
         return trump_availability[start:end]
+
+    def play_highest_card(self, valid_cards):
+        highest_score = -1
+        card_to_play = 0
+
+        # Iterate over all 36 cards
+        for i in range(len(valid_cards)):
+            # Only consider cards that are valid (value of 1 in valid_cards)
+            if valid_cards[i] == 1:
+                # Calculate index within no_trump_score (i % 9 gives position within suit)
+                score_index = i % 9
+                card_score = self.no_trump_score[score_index]
+
+                # Check if this card has the highest score so far
+                if card_score > highest_score:
+                    highest_score = card_score
+                    card_to_play = i
+
+        return card_to_play
