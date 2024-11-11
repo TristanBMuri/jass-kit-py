@@ -235,7 +235,16 @@ class AgentRuleBased(Agent):
         card_to_play = self.play_highest_card(valid_cards)
         card_to_play = self.check_for_bock(obs)
 
-        return card_to_play
+        #print(valid_cards)
+        #print(card_to_play)
+        if valid_cards[card_to_play] == 1:
+            return card_to_play
+        else:
+            card_to_play = self.play_highest_card(valid_cards)
+            if valid_cards[card_to_play] == 1:
+                return card_to_play
+            card = self._rng.choice(np.flatnonzero(valid_cards))
+            return card
 
     def get_cards_still_in_play(self, obs):
         possible_cards = [i for i in range(36)]
