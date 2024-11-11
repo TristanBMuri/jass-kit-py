@@ -6,6 +6,7 @@ COPY requirements.txt /app/
 RUN pip install -r requirements.txt
 
 
+COPY jass /app/jass
 COPY test1/flask_app.py /app/
 
 

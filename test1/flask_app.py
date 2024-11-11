@@ -3,11 +3,7 @@ from flask import Flask, jsonify, request
 from jass.game.game_observation import GameObservation
 
 from jass.game.game_util import *
-
-def http_play_card(play_card_int):
-    play_card_str = convert_int_encoded_cards_to_str_encoded(play_card_int)
-
-
+from jass.agents.agent_rule_based import AgentRuleBased
 from flask import Flask, jsonify
 
 app = Flask(__name__)
@@ -31,18 +27,20 @@ def select_trump():
     """
     trump = 3
     response = {
-        "trump": trump
+            "trump": AgentRuleBased().action_trump(obs)
     }
+
     return jsonify(response), 200
 
 @app.route('/play_card', methods=['POST'])
 def play_card():
     obs = GameObservation.from_json(request.get_json())
 
+
+
     # get move
-    move = "C8"
     response = {
-        "card": move
+        "card": convert_int_encoded_cards_to_str_encoded([AgentRuleBased().action_play_card(obs)])[0]
     }
     return jsonify(response), 200
 
