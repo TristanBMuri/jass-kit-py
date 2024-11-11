@@ -226,13 +226,18 @@ class AgentRuleBased(Agent):
 
             if highest_player_trick > 0:
                 # print("Uses highest player trick")
-                card_to_play = (trick_index + 9 * (obs.declared_trump -1))
-                return card_to_play
+                card_to_play = (trick_index + 9 * obs.declared_trump)
+
+                if valid_cards[card_to_play] == 1:
+                    return card_to_play
+                else:
+                    card_to_play = (trick_index + 9 * obs.declared_trump)
+                    if valid_cards[card_to_play] == 1:
+                        return card_to_play
 
         cards_still_in_play = self.get_cards_still_in_play(obs)
         # print(cards_still_in_play)
         # card_to_play = self._rng.choice(np.flatnonzero(valid_cards))
-        card_to_play = self.play_highest_card(valid_cards)
         card_to_play = self.check_for_bock(obs)
 
         #print(valid_cards)
