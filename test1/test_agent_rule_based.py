@@ -92,7 +92,7 @@ class RuleBasedAgentTests(unittest.TestCase):
         rule = RuleSchieber()
         game = GameSim(rule=rule)
 
-        np.random.seed(1)
+        np.random.seed(10)
         game.init_from_cards(hands=deal_random_hand(), dealer=NORTH)
 
         arena = Arena(nr_games_to_play=5)

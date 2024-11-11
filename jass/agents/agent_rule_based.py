@@ -40,46 +40,45 @@ class AgentRuleBased(Agent):
             selected trump as encoded in jass.game.const or jass.game.const.PUSH
         """
         # add your code here using the function above
-        if obs.forehand == -1:
-            # If forehand is not yet set, we are the forehand player and can select trump or push
-            trump_scores = [0] * 6
-            for i in range(6):
-                trump_scores[i] = self.calculate_gap_consideration(obs.hand, i) * 5
-                if i <= 3:  # For suits (Diamonds, Hearts, Spades, Clubs)
-                    trump_scores[i] += self.calculate_score_for_suit(obs.hand, i, i)
-                elif i == 4:  # Obenabe
-                    for suit in range(4):
-                        trump_scores[i] += self.calculate_score_for_suit(obs.hand, i, suit)
-                elif i == 5:  # Uneufe
-                    for suit in range(4):
-                        trump_scores[i] += self.calculate_score_for_suit(obs.hand, i, suit)
+        # If forehand is not yet set, we are the forehand player and can select trump or push
+        trump_scores = [0] * 6
+        for i in range(6):
+            trump_scores[i] = self.calculate_gap_consideration(obs.hand, i) * 5
+            if i <= 3:  # For suits (Diamonds, Hearts, Spades, Clubs)
+                trump_scores[i] += self.calculate_score_for_suit(obs.hand, i, i)
+            elif i == 4:  # Obenabe
+                for suit in range(4):
+                    trump_scores[i] += self.calculate_score_for_suit(obs.hand, i, suit)
+            elif i == 5:  # Uneufe
+                for suit in range(4):
+                    trump_scores[i] += self.calculate_score_for_suit(obs.hand, i, suit)
 
-            # Select the trump with the highest score
-            result = int(trump_scores.index(max(trump_scores)))
-            #print("Trump selection scores:", trump_scores)
-            #print("Selected trump result:", result)
-            #print("Push value", PUSH)
+        # Select the trump with the highest score
+        result = int(trump_scores.index(max(trump_scores)))
+        #print("Trump selection scores:", trump_scores)
+        #print("Selected trump result:", result)
+        #print("Push value", PUSH)
 
-            if max(trump_scores) < 50:  # Adjust the threshold as needed
-                self._logger.info('Result: {}'.format(PUSH))
-                return PUSH
-
-            self._logger.info('Result: {}'.format(result))
-            print(result)
-            if result == 0:
-                return DIAMONDS
-            if result == 1:
-                return HEARTS
-            if result == 2:
-                return SPADES
-            if result == 3:
-                return CLUBS
-            if result == 4:
-                return OBE_ABE
-            if result == 5:
-                return UNE_UFE
-
+        if max(trump_scores) < 50 and obs.forehand == -1:  # Adjust the threshold as needed
+            self._logger.info('Result: {}'.format(PUSH))
             return PUSH
+
+        self._logger.info('Result: {}'.format(result))
+        print(result)
+        if result == 0:
+            return DIAMONDS
+        if result == 1:
+            return HEARTS
+        if result == 2:
+            return SPADES
+        if result == 3:
+            return CLUBS
+        if result == 4:
+            return OBE_ABE
+        if result == 5:
+            return UNE_UFE
+
+        return result
 
     def calculate_score_for_suit(self, cards, trump: int, suit: int) -> int:
         """
@@ -263,25 +262,41 @@ class AgentRuleBased(Agent):
         lowest_card_value = float('inf')
 
         # Step 3: Identify the highest and lowest cards among valid cards
-        for card in range(len(valid_cards)):
-            if valid_cards[card] == 1:  # Card is playable
-                # Card rank in suit
-                rank_in_suit = card % 9
-                # Determine if it's a trump card and its score
-                if is_trump and (card // 9 == obs.declared_trump):  # Trump card
-                    card_value = self.trump_score[rank_in_suit]
-                else:  # Non-trump card
-                    card_value = self.no_trump_score[rank_in_suit]
+        if obs.declared_trump != 5:
+            for card in range(len(valid_cards)):
+                if valid_cards[card] == 1:  # Card is playable
+                    # Card rank in suit
+                    rank_in_suit = card % 9
+                    # Determine if it's a trump card and its score
+                    if is_trump and (card // 9 == obs.declared_trump):  # Trump card
+                        card_value = self.trump_score[rank_in_suit]
+                    else:  # Non-trump card
+                        card_value = self.no_trump_score[rank_in_suit]
 
-                # Update highest card if this card has a higher value
-                if highest_card is None or card_value > self.no_trump_score[highest_card % 9]:
-                    highest_card = card
+                    # Update highest card if this card has a higher value
+                    if highest_card is None or card_value > self.no_trump_score[highest_card % 9]:
+                        highest_card = card
 
-                # Update lowest card if this card has a lower value
-                if card_value < lowest_card_value:
-                    lowest_card_value = card_value
-                    lowest_card = card
+                    # Update lowest card if this card has a lower value
+                    if card_value < lowest_card_value:
+                        lowest_card_value = card_value
+                        lowest_card = card
+        else:
+            for card in range(len(valid_cards)):
+                if valid_cards[card] == 1:  # Card is playable
+                    # Card rank in suit
+                    rank_in_suit = card % 9
 
+                    card_value = self.uneufe_score[rank_in_suit]
+
+                    # Update highest card if this card has a higher value
+                    if highest_card is None or card_value > self.no_trump_score[highest_card % 9]:
+                        highest_card = card
+
+                    # Update lowest card if this card has a lower value
+                    if card_value < lowest_card_value or lowest_card is None:
+                        lowest_card_value = card_value
+                        lowest_card = card
         # Step 4: Decide which card to play
         if highest_card is not None:
             # If we hold the highest card in the current trick context, play it
