@@ -7,8 +7,14 @@ RUN pip install -r requirements.txt
 
 
 COPY jass /app/jass
-COPY test1/flask_app.py /app/
+COPY examples/serverless/app.py /app/
 
+# Set environment variables for Flask
+ENV FLASK_APP=app.py
+ENV FLASK_ENV=development
+
+# Expose port 8888 for Flask
+EXPOSE 8888
 
 # Set the default command to activate the environment and run your script
-CMD ["python", "flask_app.py"]
+CMD ["flask", "run", "--host=0.0.0.0", "--port=8888"]
