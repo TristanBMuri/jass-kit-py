@@ -14,10 +14,18 @@ variables to keep track of:
     card points
     highest card for each suit
 
+    prio 3:
+    flexible depth
+
 important:
     opponent heuristics
         dictates on how accuarte our simulations are
-        no concrete plan yet
+        no concrete plan yet(maybe risky/ risk averse?)
+    
+    Multiple monte bots to play against each other and show improvements
+    show statistic between choosing trick or not in points
+    
+    Stats for how many games got won/ lost, win + points, loss - points
 
 monte carlo content:
     prio 1
@@ -28,7 +36,7 @@ monte carlo content:
 
     prio 2
     evaluate for team win(round -> points)
-    
+
     prio 3
     point and win modifier for plays
     different approaches for who starts round
