@@ -1,0 +1,50 @@
+variables to keep track of:
+    prio 1:
+    num of simulations
+    depth of simulations
+    cards played
+    card in round
+    current trick
+    tricks played
+
+    prio 2:
+    player not having a suit
+    team that started round
+    points still available
+    card points
+    highest card for each suit
+
+important:
+    opponent heuristics
+        dictates on how accuarte our simulations are
+        no concrete plan yet
+
+monte carlo content:
+    prio 1
+    evaluate card strength
+    simulate opponent hand
+        takes into consideration opponents not having a suit
+    simulate opponent play
+
+    prio 2
+    evaluate for team win(round -> points)
+    
+    prio 3
+    point and win modifier for plays
+    different approaches for who starts round
+    if all are low win chance give low card that team mate have high suit in
+
+point and win modifier for plays:
+    has to stil be defined how it would look
+    for how many points do we ignore the win
+    or gamble on it
+
+Step 1:
+    monte carlo depth 1
+    measure speed and competence
+
+step 2:
+    monte carlo depth 2
+    
+step 3:
+    monte carlo depth 3
