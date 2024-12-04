@@ -10,6 +10,7 @@ from jass.game.const import *
 from jass.game.game_observation import GameObservation
 from jass.game.game_rule import GameRule
 from jass.game.game_sim import GameSim
+from jass.game.game_state import GameState
 from jass.game.game_util import *
 from jass.game.rule_schieber import RuleSchieber
 
@@ -20,89 +21,67 @@ class MCTS:
         self.ruleset = RuleSchieber()
         self.max_depth = max_depth
 
-    def create_game_sim_from_observation(self, game_obs: GameObservation) -> GameSim:
-        """
-        Create a GameSim object from an existing GameObservation object.
 
-        Args:
-            game_obs (GameObservation): The game observation object containing the current game state.
-            rule (GameRule): The rule set to be applied to the GameSim.
-
-        Returns:
-            GameSim: A new GameSim object initialized based on the game observation.
-        """
-        # Create a new GameSim instance with the given rule
-        game_sim = GameSim(RuleSchieber())
-
-        # Set up the game state using the observation
-        game_state = game_sim._state
-
-        # Map properties from GameObservation to GameState
-        game_state.dealer = game_obs.dealer
-        game_state.player = game_obs.player
-        game_state.trump = game_obs.trump
-        game_state.forehand = game_obs.forehand
-        game_state.declared_trump = game_obs.declared_trump
-
-        # Set tricks, trick winners, points, and related data
-        game_state.tricks = game_obs.tricks.copy()
-        game_state.trick_winner = game_obs.trick_winner.copy()
-        game_state.trick_points = game_obs.trick_points.copy()
-        game_state.trick_first_player = game_obs.trick_first_player.copy()
-        game_state.nr_tricks = game_obs.nr_tricks
-        game_state.nr_cards_in_trick = game_obs.nr_cards_in_trick
-        game_state.nr_played_cards = game_obs.nr_played_cards
-        game_state.points = game_obs.points.copy()
-
-        # Generate the hands for all players based on the observation
-        game_obs_copy = GameObservation()  # If needed, clone or copy game_obs
-        hands = self.generate_opponent_hands(game_obs_copy)
-        game_state.hands = hands
-
-        # Return the initialized GameSim object
-        return game_sim
 
     def selection(self, node):
         # tree policy
-        while not node.game_obs.nr_tricks == 9 and node.is_fully_expanded():
+        while not node.game_sim.state.nr_tricks == 9 and node.is_fully_expanded():
             node = node.best_child()
         return node
 
-    def simulate_move(self, game_obs, move):
-        game_sim = self.create_game_sim_from_observation(game_obs)
-        game_sim.action_play_card(move)
+    def simulate_move(self, game_sim, move):
+        sim_copy = copy.deepcopy(game_sim)
+        sim_copy.action_play_card(move)
+        if sim_copy.is_done():
+            return sim_copy
+        print("gamestate info:")
+        print(f"move: {move}")
+        print(f"tricks: \n{sim_copy.state.current_trick}")
+        print(f"hands: \n{sim_copy.state.hands}")
+        print(f"Cards in trick: {np.sum(sim_copy.state.nr_cards_in_trick)}")
+        print("gamestate info end: \n \n")
+
+        if move == 23:
+            print("lol")
+        for i in range(4 - np.sum(sim_copy.state.nr_cards_in_trick)):
+            valid_moves = convert_one_hot_encoded_cards_to_int_encoded_list(
+                RuleSchieber().get_valid_cards_from_obs(sim_copy.get_observation()))
+            player_move = random.choice(valid_moves)
+            sim_copy.action_play_card(player_move)
         # print(f"Move {move} simulated")
-        return game_sim.get_observation()
+        # new_obs = game_sim.get_observation()
+        # new_obs.player_view = game_obs.player_view
+        return sim_copy
 
     def expansion(self, node):
         if node.is_fully_expanded():
             return None
 
         valid_moves = convert_one_hot_encoded_cards_to_int_encoded_list(
-            node.ruleset.get_valid_cards_from_obs(node.game_obs))
+            node.ruleset.get_valid_cards_from_obs(node.game_sim.get_observation()))
 
         tried_moves = [child.move for child in node.children]
         # print(f"tried_moves: \n{tried_moves}")
         # print(f"valid_moves: \n{valid_moves}")
         untried_moves = [move for move in valid_moves if move not in tried_moves]
-
+        print(f"untried moves: {untried_moves}")
         if not untried_moves:
             return None
 
         move = random.choice(untried_moves)
         # print(f"chosen_move:\n{move}")
 
-        new_game_obs = self.simulate_move(node.game_obs, move)
+        new_game_sim = self.simulate_move(node.game_sim, move)
 
-        child_node = Node(game_obs=new_game_obs, parent=node, move=move)
+        child_node = Node(game_sim=copy.deepcopy(new_game_sim), parent=node, move=move)
         node.add_child(child_node)
 
         return child_node
 
-    def evaluate_outcome(self, game_obs):
+    def evaluate_outcome(self, game_state):
         # print(f"evaluating outcome: \n{game_obs.points}")
-        print(f"Evaluating: {game_obs.points}; player_view: {game_obs.player_view}")
-        if game_obs.points[0] == max(game_obs.points):
+        # print(f"Evaluating: {game_state.points}; player_view: {game_state.player_view}")
+        if game_state.points[0] == max(game_state.points):
             print(f"Team won")
             return 1  # Win
         else:
@@ -113,62 +92,29 @@ class MCTS:
         while node is not None:
             node.visits += 1
             print(f"Backpropegate: node_visits: {node.visits}")
-            if node.game_obs.player_view == self.player_id:
-                node.total_reward += outcome  #
-
-            else:
-                node.total_reward += -outcome  # Opponent's perspective: MCTS agent loses
-
+            node.total_reward += outcome  #
             node = node.parent
 
-    def generate_opponent_hands(self, obs):
-        possible_cards = [i for i in range(36)]
 
-        possible_cards = set(possible_cards) ^ set(convert_one_hot_encoded_cards_to_int_encoded_list(obs.hand))
-        if len(obs.tricks[obs.tricks > 0]):
-            possible_cards = set(possible_cards) ^ set(obs.tricks[obs.tricks != -1])
-        unplayed_cards = np.full((1, 4), 9 - obs.nr_tricks)[0]
 
-        # iterate backwards through players starting from the person who started the trick
-        for i in range(obs.trick_first_player[obs.nr_tricks],
-                       obs.trick_first_player[obs.nr_tricks] - obs.nr_cards_in_trick, -1):
-            unplayed_cards[i % 4] -= 1  # modulo to loop back to the end, e.g. 1, 0, 3, 2
-        # print(f"unplayed_cards: {unplayed_cards}")
-
-        hands = np.zeros(shape=[4, 36], dtype=np.int32)
-        hands[obs.player_view] = obs.hand
-
-        for player_id in range(4):
-
-            for i in range(unplayed_cards[player_id]):
-                if player_id == obs.player_view:
-                    continue
-                int_possible_cards = list(possible_cards)
-                card_choice = random.choice(int_possible_cards)
-                possible_cards.remove(card_choice)
-
-                hands[player_id] += get_cards_encoded(card_choice)
-        return hands
-
-    def simulate(self, game_obs):
+    def simulate(self, game_sim):
         # copy the current game state to avoid modifying the original state
-        simulated_state = copy.deepcopy(game_obs)
 
         for i in range(self.max_depth):
             # Check if the game has ended
-            print(f"Depth {i} ")
-            if simulated_state.nr_tricks >= 9:
+            # print(f"Depth {i} ")
+            if game_sim.state.nr_tricks >= 9:
                 break
 
             valid_moves = convert_one_hot_encoded_cards_to_int_encoded_list(
-                self.ruleset.get_valid_cards_from_obs(game_obs))
+                self.ruleset.get_valid_cards_from_obs(game_sim.get_observation()))
             if np.sum(valid_moves) == 0:
                 break
 
             move = random.choice(valid_moves)
 
-            simulated_state = self.simulate_move(simulated_state, move)
+            game_sim = self.simulate_move(copy.deepcopy(game_sim), move)
 
-        outcome = self.evaluate_outcome(simulated_state)
+        outcome = self.evaluate_outcome(game_sim.state)
 
         return outcome

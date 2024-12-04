@@ -4,8 +4,8 @@ from jass.game.rule_schieber import RuleSchieber
 
 
 class Node:
-    def __init__(self, game_obs, parent=None, move=None):
-        self.game_obs = game_obs
+    def __init__(self, game_sim, parent=None, move=None):
+        self.game_sim = game_sim
         self.parent = parent
         self.move = move
         self.children = []
@@ -20,7 +20,8 @@ class Node:
         return len(self.children) == 0
 
     def is_fully_expanded(self):
-        valid_moves = self.ruleset.get_valid_cards_from_obs(self.game_obs)
+        obs = self.game_sim.get_observation()
+        valid_moves = self.ruleset.get_valid_cards_from_obs(obs)
         return len(valid_moves) == len(self.children)
 
     def best_child(self, exploration_param=1.41):
