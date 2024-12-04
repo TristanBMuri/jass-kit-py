@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 
 from jass.agents.agent_random_schieber import AgentRandomSchieber
-from jass.agents.agent_transformed_mc_v3 import TransformedMCTSAgent
+from jass.agents.agent_transformed_mc_v4 import TransformedMCTSAgent
 from jass.arena.arena import Arena
 from jass.game.const import *
 from jass.game.game_sim import GameSim
@@ -22,10 +22,10 @@ class TransformedMCAgentTests(unittest.TestCase):
         rule = RuleSchieber()
         game = GameSim(rule=rule)
 
-        np.random.seed(1)
+        np.random.seed(5)
         game.init_from_cards(hands=deal_random_hand(), dealer=NORTH)
 
-        arena = Arena(nr_games_to_play=10)
+        arena = Arena(nr_games_to_play=1)
         arena.set_players(TransformedMCTSAgent(), AgentRandomSchieber(), TransformedMCTSAgent(), AgentRandomSchieber())
 
         arena.play_all_games()

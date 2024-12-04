@@ -42,43 +42,6 @@ class TransformedMCTSAgent(Agent):
         Returns:
             card to play
         """
-        # cards are one hot encoded
-        # they start look like this but in [1, 0, 1, 0 ... ,1] etc: DA',
-        #     'DK',
-        #     'DQ',
-        #     'DJ',
-        #     'D10',
-        #     'D9',
-        #     'D8',
-        #     'D7',
-        #     'D6',
-        #     'HA',
-        #     'HK',
-        #     'HQ',
-        #     'HJ',
-        #     'H10',
-        #     'H9',
-        #     'H8',
-        #     'H7',
-        #     'H6',
-        #     'SA',
-        #     'SK',
-        #     'SQ',
-        #     'SJ',
-        #     'S10',
-        #     'S9',
-        #     'S8',
-        #     'S7',
-        #     'S6',
-        #     'CA',
-        #     'CK',
-        #     'CQ',
-        #     'CJ',
-        #     'C10',
-        #     'C9',
-        #     'C8',
-        #     'C7',
-        #     'C6',
         valid_cards = self._rule.get_valid_cards_from_obs(obs)
 
         if obs.tricks.all() == -1:
