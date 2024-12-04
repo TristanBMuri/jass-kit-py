@@ -92,7 +92,7 @@ class test_mcts_agent(unittest.TestCase):
         rule = RuleSchieber()
         game = GameSim(rule=rule)
         agent = MCTSAgent()
-        mcts_agent = MCTSAgent(max_iterations=50)
+        mcts_agent = MCTSAgent(max_iterations=250)
 
         np.random.seed(1)
         game.init_from_cards(hands=deal_random_hand(), dealer=NORTH)

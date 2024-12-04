@@ -3,6 +3,7 @@ import logging
 import random
 
 import numpy as np
+from Tools.demo.sortvisu import Array
 
 from jass.agents.Helpers.Node import Node
 from jass.agents.agent import Agent
@@ -14,8 +15,12 @@ from jass.game.game_util import *
 from jass.game.rule_schieber import RuleSchieber
 
 
-class MCTS:
-    def __init__(self, player_id, max_depth=9):
+class TrademarkMCTS:
+    obe_nabe = [8, 7, 6, 5, 4, 3, 2, 1, 0]
+    une_ufe = [0, 1, 2, 3, 4, 5, 6, 7, 8]
+    trump_modifier = [9, 9, 9, 16, 9, 16, 9, 9, 9]
+
+    def __init__(self, player_id, max_depth=3):
         self.player_id = player_id
         self.ruleset = RuleSchieber()
         self.max_depth = max_depth
@@ -101,18 +106,18 @@ class MCTS:
 
     def evaluate_outcome(self, game_obs):
         # print(f"evaluating outcome: \n{game_obs.points}")
-        print(f"Evaluating: {game_obs.points}; player_view: {game_obs.player_view}")
+        # print(f"Evaluating: {game_obs.points}; player_view: {game_obs.player_view}")
         if game_obs.points[0] == max(game_obs.points):
-            print(f"Team won")
+            # print(f"Team won")
             return 1  # Win
         else:
-            print(f"Team lost")
+            # print(f"Team lost")
             return -1  # Loss
 
     def backpropagate(self, node, outcome):
         while node is not None:
             node.visits += 1
-            print(f"Backpropegate: node_visits: {node.visits}")
+            # print(f"Backpropegate: node_visits: {node.visits}")
             if node.game_obs.player_view == self.player_id:
                 node.total_reward += outcome  #
 
@@ -150,13 +155,13 @@ class MCTS:
                 hands[player_id] += get_cards_encoded(card_choice)
         return hands
 
-    def simulate(self, game_obs):
+    def simulate(self, game_obs: GameObservation):
         # copy the current game state to avoid modifying the original state
         simulated_state = copy.deepcopy(game_obs)
 
         for i in range(self.max_depth):
             # Check if the game has ended
-            print(f"Depth {i} ")
+            # print(f"Depth {i} ")
             if simulated_state.nr_tricks >= 9:
                 break
 
@@ -165,10 +170,86 @@ class MCTS:
             if np.sum(valid_moves) == 0:
                 break
 
-            move = random.choice(valid_moves)
+            move = self.get_lowest_card(valid_moves, game_obs.declared_trump)
+
+            current_trick = game_obs.current_trick
+
+            #print("Lowest?:", card_strings[move])
+            #print("Could be lower than:")
+            #for i in current_trick:
+            #    print(card_strings[i])
+
+
+            for card in valid_moves:
+                if card < self.get_lowest_card(valid_moves, game_obs.declared_trump):
+                    move = card
+                    break
+
+            # print("updated card:", card_strings[move])
+
 
             simulated_state = self.simulate_move(simulated_state, move)
 
         outcome = self.evaluate_outcome(simulated_state)
 
         return outcome
+
+    def get_lowest_card(self, moves: Array, declared_trump: int) -> int:
+        current_card = None
+        current_card_score = 0
+        temp_score = 0
+
+        if declared_trump == 5:
+            for i in moves:
+                if current_card is None:
+                    current_card = i
+                if self.une_ufe[current_card % 9] < self.une_ufe[i % 9]:
+                    current_card = i
+        else:
+            for i in moves:
+                if current_card is None:
+                    current_card = i
+                    current_card_score = self.obe_nabe[i % 9]
+                    if self.is_trump(current_card, declared_trump):
+                        current_card_score += self.trump_modifier[i % 9]
+                temp_score = self.obe_nabe[i % 9]
+                if self.is_trump(i, declared_trump):
+                    temp_score += self.trump_modifier[i % 9]
+                if temp_score < current_card_score:
+                    current_card = i
+
+        return current_card
+
+    def get_highest_card(self, moves: Array, declared_trump: int) -> int:
+        current_card = None
+        current_card_score = 0
+        temp_score = 0
+
+        if declared_trump == 5:
+            for i in moves:
+                if current_card is None:
+                    current_card = i
+                if self.une_ufe[current_card % 9] > self.une_ufe[i % 9]:
+                    current_card = i
+        else:
+            for i in moves:
+                if current_card is None:
+                    current_card = i
+                    current_card_score = self.obe_nabe[i % 9]
+                    if self.is_trump(current_card, declared_trump):
+                        current_card_score += self.trump_modifier[i % 9]
+                temp_score = self.obe_nabe[i % 9]
+                if self.is_trump(i, declared_trump):
+                    temp_score += self.trump_modifier[i % 9]
+                if temp_score > current_card_score:
+                    current_card = i
+
+        return current_card
+
+    def is_trump(self, card: int, trump: int) -> bool:
+        if trump > 3:
+            return False
+        elif card >= 9 * trump and card > 9 * (trump + 1):
+            return True
+        else:
+            return False
