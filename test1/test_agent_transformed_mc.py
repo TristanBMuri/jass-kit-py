@@ -21,11 +21,12 @@ class TransformedMCAgentTests(unittest.TestCase):
     def test_game_skill(self):
         rule = RuleSchieber()
         game = GameSim(rule=rule)
+        game_count = 1
 
         np.random.seed(5)
         game.init_from_cards(hands=deal_random_hand(), dealer=NORTH)
 
-        arena = Arena(nr_games_to_play=1)
+        arena = Arena(nr_games_to_play=game_count)
         arena.set_players(TransformedMCTSAgent(), AgentRandomSchieber(), TransformedMCTSAgent(), AgentRandomSchieber())
 
         arena.play_all_games()

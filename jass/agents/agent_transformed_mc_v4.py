@@ -58,6 +58,7 @@ class Node_V4:
         # Return the legal actions available from this state
         my_hand, _, current_round = self.state
         if len(current_round) > 0:
+            #TODO trump cards are also valid if follow suit card exists
             lead_suit = current_round[0] // 9
             return [card for card in my_hand if card // 9 == lead_suit] or my_hand
         return my_hand
@@ -80,11 +81,13 @@ class TransformedMCTSAgent(Agent):
         lead_suit = self.get_suit(current_round[0])
         # Follow suit if possible
         follow_suit_cards = [card for card in my_hand if self.get_suit(card) == lead_suit]
+        #TODO trump cards are also valid if follow suit card exists
         if follow_suit_cards:
             return follow_suit_cards
 
         # If no cards of the lead suit are available, all cards can be played
         return my_hand
+    
     def monte_carlo_tree_search(self, root: Node_V4, max_depth: int):
         """
         Perform a Monte Carlo Tree Search (MCTS) from the given root node up to a specified depth.
@@ -118,6 +121,7 @@ class TransformedMCTSAgent(Agent):
 
         # Return the action leading to the best average score
         best_child = max(root.children, key=lambda child: child.value / (child.visits + 1e-5))
+        print("best child:", best_child)
         return best_child.action
 
     def select_best_node_uct(self, node: Node_V4, exploration_param=1.41):
@@ -174,6 +178,7 @@ class TransformedMCTSAgent(Agent):
             current_round = np.append(current_round, action)
             points += self.card_points(action, played_cards)
         return points
+
     def get_dynamic_simulation_count(self, played_cards, current_round):
         """
         Determine the number of simulations dynamically based on the game state.
@@ -190,11 +195,16 @@ class TransformedMCTSAgent(Agent):
             return 100  # Mid game, balance between accuracy and speed
         else:
             return 50   # Late game, fewer simulations to speed up decisions
+
     def __init__(self):
         # Use rule object to determine valid actions
         self._rule = RuleSchieber()
         # init random number generator
         self._rng = np.random.default_rng()
+
+        # own obs
+        self.global_obs = GameObservation()
+
 
     def action_trump(self, obs: GameObservation) -> int:
         """
@@ -219,6 +229,7 @@ class TransformedMCTSAgent(Agent):
 
         # Choose the trump with the highest score
         best_trump = max(trump_scores, key=trump_scores.get)
+
         if obs.forehand == -1:
             # If no trump has a reasonable score, push
             if trump_scores[best_trump] < 100:  # Threshold can be adjusted
@@ -234,6 +245,8 @@ class TransformedMCTSAgent(Agent):
         Returns:
             card to play
         """
+        self.global_obs = obs
+
         # Get the valid cards the player can play from the current observation
         valid_cards = self._rule.get_valid_cards_from_obs(obs)
         my_hand = np.flatnonzero(valid_cards)  # Convert one-hot encoded valid cards to card IDs
