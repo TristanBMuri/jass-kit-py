@@ -219,13 +219,14 @@ class TransformedMCTSAgent(Agent):
 
         # Evaluate each trump by running Monte Carlo simulations
         for trump_suit in trump_scores.keys():
-            trump_scores[trump_suit] = sum(self.monte_carlo_trump(my_hand=np.flatnonzero(obs.hand),
-                                                                     num_simulations=100,
-                                                                     played_cards=[card for trick in obs.tricks for card
-                                                                                   in trick if card != -1],
-                                                                     current_round=obs.current_trick[
-                                                                         obs.current_trick != -1],
-                                                                     trump_suit=trump_suit).values())
+            trump_scores[trump_suit] = sum(
+                self.monte_carlo_trump(my_hand=np.flatnonzero(obs.hand),
+                num_simulations=100,
+                played_cards=[card for trick in obs.tricks for card
+                            in trick if card != -1],
+                current_round=obs.current_trick[
+                    obs.current_trick != -1],
+                trump_suit=trump_suit).values())
 
         # Choose the trump with the highest score
         best_trump = max(trump_scores, key=trump_scores.get)
