@@ -12,6 +12,12 @@ from jass.game.rule_schieber import RuleSchieber
 
 
 class TransformedMCTSAgent(Agent):
+    def __init__(self):
+        # Use rule object to determine valid actions
+        self._rule = RuleSchieber()
+        # init random number generator
+        self._rng = np.random.default_rng()
+
     def get_dynamic_simulation_count(self, played_cards, current_round):
         """
         Determine the number of simulations dynamically based on the game state.
@@ -28,12 +34,6 @@ class TransformedMCTSAgent(Agent):
             return 100  # Mid game, balance between accuracy and speed
         else:
             return 50   # Late game, fewer simulations to speed up decisions
-    def __init__(self):
-        # log actions
-        # Use rule object to determine valid actions
-        self._rule = RuleSchieber()
-        # init random number generator
-        self._rng = np.random.default_rng()
 
     def action_trump(self, obs: GameObservation) -> int:
         """
@@ -48,19 +48,21 @@ class TransformedMCTSAgent(Agent):
 
         # Evaluate each trump by running Monte Carlo simulations
         for trump_suit in trump_scores.keys():
-            trump_scores[trump_suit] = sum(self.monte_carlo_simulate(my_hand=np.flatnonzero(obs.hand),
-                                                                     num_simulations=100,
-                                                                     played_cards=[card for trick in obs.tricks for card
-                                                                                   in trick if card != -1],
-                                                                     current_round=obs.current_trick[
-                                                                         obs.current_trick != -1],
-                                                                     trump_suit=trump_suit).values())
+            trump_scores[trump_suit] = sum(self.monte_carlo_simulate(
+                my_hand=np.flatnonzero(obs.hand),
+                 num_simulations=100,
+                 played_cards=[card for trick in obs.tricks for card
+                               in trick if card != -1],
+                 current_round=obs.current_trick[
+                     obs.current_trick != -1],
+                 trump_suit=trump_suit).values())
 
         # Choose the trump with the highest score
         best_trump = max(trump_scores, key=trump_scores.get)
+        print(trump_scores)
         if obs.forehand == -1:
             # If no trump has a reasonable score, push
-            if trump_scores[best_trump] < 100:  # Threshold can be adjusted
+            if trump_scores[best_trump] < 23:  # Threshold
                 return PUSH
 
         return best_trump
@@ -219,70 +221,6 @@ class TransformedMCTSAgent(Agent):
         # If no non-trump cards are available, play any card
         if non_trump_cards:
           return random.choice(opponent_hand)
-        """
-        Simulate the play of an opponent based on a lead card.
-        Args:
-            opponent_hand: List of card IDs representing the opponent's hand
-            lead_card: The card that has been led in the current trick
-            trump_suit: The trump suit for the current game
-        Returns:
-            A card ID representing the opponent's play
-        """
-        if not opponent_hand:
-            return None  # If opponent hand is empty, return None to indicate no valid card to play
-
-        # Follow suit if possible
-        if lead_card is not None:
-            follow_suit_cards = [card for card in opponent_hand if self.get_suit(card) == self.get_suit(lead_card)]
-            if follow_suit_cards:
-                return random.choice(follow_suit_cards)
-
-        # If no cards of the lead suit are available, decide if playing a trump is beneficial
-        trump_cards = [card for card in opponent_hand if self.get_suit(card) == trump_suit]
-        if trump_cards:
-            # Play a trump card only if we are likely to lose the trick with other cards
-            non_trump_cards = [card for card in opponent_hand if self.get_suit(card) != trump_suit]
-            if not non_trump_cards or lead_card is not None:
-                return random.choice(trump_cards)
-
-        # Otherwise, play a non-trump card (if available)
-        non_trump_cards = [card for card in opponent_hand if self.get_suit(card) != trump_suit]
-        if non_trump_cards:
-            return random.choice(non_trump_cards)
-
-        # If no non-trump cards are available, play any card
-        if non_trump_cards:
-          return random.choice(opponent_hand)
-        """
-        Simulate the play of an opponent based on a lead card.
-        Args:
-            opponent_hand: List of card IDs representing the opponent's hand
-            lead_card: The card that has been led in the current trick
-            trump_suit: The trump suit for the current game
-        Returns:
-            A card ID representing the opponent's play, or None if no valid card is available
-        """
-        if not opponent_hand:
-            return None  # If opponent hand is empty, return None to indicate no valid card to play
-        """
-        Simulate the play of an opponent based on a lead card.
-        Args:
-            opponent_hand: List of card IDs representing the opponent's hand
-            lead_card: The card that has been led in the current trick
-            trump_suit: The trump suit for the current game
-        Returns:
-            A card ID representing the opponent's play
-        """
-        if lead_card is not None:
-            # Follow suit if possible
-            follow_suit_cards = [card for card in opponent_hand if self.get_suit(card) == self.get_suit(lead_card)]
-            if follow_suit_cards:
-                return random.choice(follow_suit_cards)
-        # Otherwise, play a random card
-        if opponent_hand:
-            return random.choice(opponent_hand)
-        else:
-            return None
         return None
 
     def card_strength(self, card, trump_suit):
