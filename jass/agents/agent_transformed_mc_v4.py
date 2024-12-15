@@ -284,13 +284,20 @@ class TransformedMCTSAgent(Agent):
 
         valid_cards = self._rule.get_valid_cards_from_obs(self.global_obs)
         if valid_cards[best_card] == 0:
+            return best_card
+        try:
             if valid_cards[best_card + 1] == 1:
-                return best_card + 1
+                try:
+                    return best_card + 1
+                except IndexError:
+                    card = self._rng.choice(np.flatnonzero(valid_cards))
+                    return card
+        except IndexError:
             card = self._rng.choice(np.flatnonzero(valid_cards))
             return card
-
-        return best_card
-
+        else:
+            card = self._rng.choice(np.flatnonzero(valid_cards))
+            return card
 
     def monte_carlo_trump(self, my_hand, trump_suit, num_simulations=100, played_cards=None, current_round=None,
                              team_started=None):
