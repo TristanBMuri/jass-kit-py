@@ -53,7 +53,7 @@ class Node_V4:
         new_played_cards = played_cards + current_round + [action]
         new_current_round = [] if len(current_round) == 3 else current_round + [action]
 
-        return (new_hand, new_played_cards, new_current_round, trump)
+        return new_hand, new_played_cards, new_current_round, trump
 
     def get_legal_actions(self):
         # Return the legal actions available from this state
@@ -376,7 +376,7 @@ class TransformedMCTSAgent(Agent):
         root = Node_V4(state=(my_hand, played_cards, current_round, self.global_obs.declared_trump))
 
         # Perform Monte Carlo Tree Search
-        max_depth = 3  # Set the desired depth for the tree search
+        max_depth = 9  # Set the desired depth for the tree search
         best_action = self.monte_carlo_tree_search(root, max_depth)
         return best_action
 
