@@ -10,69 +10,6 @@ from jass.game.game_util import *
 from jass.game.rule_schieber import RuleSchieber
 
 
-class Node_V4:
-    def __init__(self, state, parent=None, action=None, trump=None):
-        self.state = state
-        self.parent = parent
-        self.children = []
-        self.visits = 0
-        self.value = 0
-        self.action = action
-        self.trump = trump
-
-    def is_fully_expanded(self):
-        return len(self.children) == len(self.get_legal_actions())
-
-    def is_terminal(self):
-        # Assuming terminal state means all cards have been played
-        my_hand, played_cards, current_round, trump = self.state
-        return len(played_cards) + len(current_round) == 36
-
-    def expand(self):
-        legal_actions = self.get_legal_actions()
-        for action in legal_actions:
-            if action not in [child.action for child in self.children]:
-                next_state = self.simulate_action(action)
-                child_node = Node_V4(state=next_state, parent=self, action=action, trump=self.trump)
-                self.children.append(child_node)
-                return child_node
-        return None
-
-    def simulate_action(self, action):
-        # Simulate taking the given action and return the resulting state
-        my_hand, played_cards, current_round, trump = self.state
-
-        # Convert played_cards and current_round to lists if they are numpy arrays
-        if isinstance(played_cards, np.ndarray):
-            played_cards = played_cards.tolist()
-        if isinstance(current_round, np.ndarray):
-            current_round = current_round.tolist()
-
-        # Update new_hand, new_played_cards, and new_current_round
-        new_hand = [card for card in my_hand if card != action]
-        new_played_cards = played_cards + current_round + [action]
-        new_current_round = [] if len(current_round) == 3 else current_round + [action]
-
-        return new_hand, new_played_cards, new_current_round, trump
-
-    def get_legal_actions(self):
-        # Return the legal actions available from this state
-        try:
-            my_hand, _, current_round, trump = self.state
-        except ValueError:
-            raise ValueError("State does not have the expected 4 elements: my_hand, played_cards, current_round, trump")
-
-        if len(current_round) > 0:
-            lead_suit = current_round[0] // 9
-            return_value = [card for card in my_hand if card // 9 == lead_suit]
-            if return_value:
-                return_value = [card for card in my_hand if card // 9 == lead_suit or trump]
-                return return_value
-            else:
-                return my_hand
-        return my_hand
-
-
 class TransformedMCTSAgent(Agent):
     def __init__(self):
         # Use rule object to determine valid actions
@@ -82,127 +19,6 @@ class TransformedMCTSAgent(Agent):
 
         # own obs
         self.global_obs = GameObservation()
-
-    def get_valid_actions(self, my_hand, current_round):
-        """
-        Determine the valid actions (cards that can be played) based on the current hand and round.
-        Args:
-            my_hand: List of card IDs representing the player's hand
-            current_round: List of card IDs that have been played in the current trick so far
-        Returns:
-            A list of card IDs that can be legally played
-        """
-        if not len(current_round) > 0:
-            # If no cards have been played in the current round, all cards in hand are valid
-            return my_hand
-
-        lead_suit = self.get_suit(current_round[0])
-        # Follow suit if possible
-        follow_suit_cards = [card for card in my_hand if self.get_suit(card) == lead_suit]
-        if follow_suit_cards:
-            follow_suit_cards = [card for card in my_hand if card // 9 == lead_suit or self.global_obs.declared_trump]
-            return follow_suit_cards
-
-        # If no cards of the lead suit are available, all cards can be played
-        return my_hand
-    
-    def monte_carlo_tree_search(self, root: Node_V4, max_depth: int):
-        """
-        Perform a Monte Carlo Tree Search (MCTS) from the given root node up to a specified depth.
-        Args:
-            root: The root node from which to start the MCTS
-            max_depth: The maximum depth to which the search should expand
-        Returns:
-            The best action based on the MCTS evaluation
-        """
-        for _ in range(100):  # Loop to perform fixed number of simulations for consistent depth  # Loop to perform multiple simulations from the root node
-            # Selection: Traverse from root to leaf using UCT
-            current_node = root
-            depth = 0
-            while current_node.is_fully_expanded() and depth < max_depth:
-                current_node = self.select_best_node_uct(current_node)
-                depth += 1
-
-            # Expansion: Expand a child if the node is not terminal
-            if depth < max_depth and not current_node.is_terminal():
-                current_node = current_node.expand()
-
-            # Simulation: Simulate a rollout from this node
-            value = self.simulate(current_node.state, root.state[1], max_depth - depth)
-
-            # Backpropagation: Propagate the value up to the root
-            self.backpropagate(current_node, value)
-
-        if not root.children:
-            # Handle the scenario where no children exist
-            return None
-
-        # Return the action leading to the best average score
-        best_child = max(root.children, key=lambda child: child.value / (child.visits + 1e-5))
-        # print("best child:", best_child.action)
-        valid_cards = self._rule.get_valid_cards_from_obs(self.global_obs)
-        if valid_cards[best_child.action] == 0:
-            if valid_cards[best_child.action + 1] == 1:
-                return best_child.action + 1
-            card = self._rng.choice(np.flatnonzero(valid_cards))
-            return card
-
-        return best_child.action
-
-    def select_best_node_uct(self, node: Node_V4, exploration_param=1.41):
-        """
-        Select the best child node based on UCT (Upper Confidence Bound for Trees).
-        Args:
-            node: The current node from which to select the next move
-            exploration_param: The exploration parameter that balances exploration vs. exploitation
-        Returns:
-            The child node with the highest UCT score
-        """
-        if not node.children:
-            return node  # Return the current node as a fallback
-
-        best_child = max(node.children, key=lambda child:
-                         (child.value / (child.visits + 1e-5)) +
-                         exploration_param * (np.sqrt(np.log(node.visits + 1) / (child.visits + 1e-5))))
-        return best_child
-
-    def backpropagate(self, node: Node_V4, value: float):
-        """
-        Backpropagate the simulation result up to the root.
-        Args:
-            node: The node from which to start backpropagation
-            value: The value obtained from the simulation
-        """
-        current_node = node
-        while current_node is not None:
-            current_node.visits += 1
-            current_node.value += value
-            current_node = current_node.parent
-
-    def simulate(self, state, played_cards, depth_remaining):
-        """
-        Simulate a game from the given state until a terminal state or depth limit is reached.
-        Args:
-            state: The current state to simulate from
-            played_cards: The list of cards that have been played in the game
-            depth_remaining: The remaining depth to simulate
-        Returns:
-            A value representing the result of the simulation
-        """
-        my_hand, played_cards, current_round, trump = state
-        points = 0
-        for _ in range(depth_remaining):
-            if len(played_cards) + len(current_round) >= 36:
-                break  # Terminal state, game is over
-            # Simulate an action
-            valid_actions = self.get_valid_actions(my_hand, current_round)
-            if not valid_actions:
-                break
-            action = random.choice(valid_actions)
-            my_hand.remove(action)
-            current_round = np.append(current_round, action)
-            points += self.card_points(action, played_cards)
-        return points
 
     def get_dynamic_simulation_count(self, played_cards, current_round):
         """
@@ -219,8 +35,7 @@ class TransformedMCTSAgent(Agent):
         elif remaining_cards > 10:
             return 100  # Mid game, balance between accuracy and speed
         else:
-            return 50   # Late game, fewer simulations to speed up decisions
-
+            return 50  # Late game, fewer simulations to speed up decisions
 
     def action_trump(self, obs: GameObservation) -> int:
         """
@@ -235,21 +50,21 @@ class TransformedMCTSAgent(Agent):
 
         # Evaluate each trump by running Monte Carlo simulations
         for trump_suit in trump_scores.keys():
-            trump_scores[trump_suit] = sum(
-                self.monte_carlo_trump(my_hand=np.flatnonzero(obs.hand),
+            trump_scores[trump_suit] = sum(self.monte_carlo_simulate(
+                my_hand=np.flatnonzero(obs.hand),
                 num_simulations=100,
                 played_cards=[card for trick in obs.tricks for card
-                            in trick if card != -1],
+                              in trick if card != -1],
                 current_round=obs.current_trick[
                     obs.current_trick != -1],
                 trump_suit=trump_suit).values())
 
         # Choose the trump with the highest score
         best_trump = max(trump_scores, key=trump_scores.get)
-
+        print(trump_scores)
         if obs.forehand == -1:
             # If no trump has a reasonable score, push
-            if trump_scores[best_trump] < 26:  # Threshold can be adjusted
+            if trump_scores[best_trump] < 26:  # Threshold
                 return PUSH
 
         return best_trump
@@ -262,8 +77,6 @@ class TransformedMCTSAgent(Agent):
         Returns:
             card to play
         """
-        self.global_obs = obs
-
         # Get the valid cards the player can play from the current observation
         valid_cards = self._rule.get_valid_cards_from_obs(obs)
         my_hand = np.flatnonzero(valid_cards)  # Convert one-hot encoded valid cards to card IDs
@@ -273,33 +86,17 @@ class TransformedMCTSAgent(Agent):
         current_round = obs.current_trick[
             obs.current_trick != -1]  # Get the currently played cards in the ongoing trick
 
-        if sum(valid_cards) == 1:
-            return self._rng.choice(np.flatnonzero(valid_cards))
-
         # Use Monte Carlo simulation to determine the card to play
         team_started = (obs.current_trick.tolist().count(-1) % 2 == 0)
         num_simulations = self.get_dynamic_simulation_count(played_cards, current_round)
-        best_action = self.monte_carlo_simulate(my_hand=my_hand, played_cards=played_cards, current_round=current_round, trump_suit=obs.declared_trump, team_started=team_started, num_simulations=num_simulations)
-        best_card = best_action
+        estimated_scores = self.monte_carlo_simulate(my_hand=my_hand, played_cards=played_cards,
+                                                     current_round=current_round,
+                                                     trump_suit=obs.declared_trump, team_started=team_started,
+                                                     num_simulations=num_simulations)
+        best_card = max(estimated_scores, key=estimated_scores.get)
+        return best_card
 
-        valid_cards = self._rule.get_valid_cards_from_obs(self.global_obs)
-        if valid_cards[best_card] == 0:
-            return best_card
-        try:
-            if valid_cards[best_card + 1] == 1:
-                try:
-                    return best_card + 1
-                except IndexError:
-                    card = self._rng.choice(np.flatnonzero(valid_cards))
-                    return card
-        except IndexError:
-            card = self._rng.choice(np.flatnonzero(valid_cards))
-            return card
-        else:
-            card = self._rng.choice(np.flatnonzero(valid_cards))
-            return card
-
-    def monte_carlo_trump(self, my_hand, trump_suit, num_simulations=100, played_cards=None, current_round=None,
+    def monte_carlo_simulate(self, my_hand, trump_suit, num_simulations=100, played_cards=None, current_round=None,
                              team_started=None):
         """
         Perform Monte Carlo simulations to estimate the best card to play based on the given hand.
@@ -341,9 +138,11 @@ class TransformedMCTSAgent(Agent):
                         continue  # Skip if we can't follow suit
 
                 # Estimate if playing 'card' will win the trick
-                if opponent_play is not None and self.card_strength(card, trump_suit) > self.card_strength(opponent_play, trump_suit):
+                if opponent_play is not None and self.card_strength(card, trump_suit) > self.card_strength(
+                        opponent_play, trump_suit):
                     win_counts[card] += 1
-                    point_totals[card] += self.card_points(card, trump_suit) + self.card_points(opponent_play, trump_suit)
+                    point_totals[card] += self.card_points(card, trump_suit) + self.card_points(opponent_play,
+                                                                                                trump_suit)
 
         # Estimate win rate and average points for each card
         estimated_win_rate = {card: wins / num_simulations for card, wins in win_counts.items()}
@@ -353,33 +152,6 @@ class TransformedMCTSAgent(Agent):
         combined_scores = {card: (estimated_win_rate[card] * 0.6) + (estimated_points[card] * 0.4) for card in my_hand}
 
         return combined_scores
-
-    def monte_carlo_simulate(self, my_hand, trump_suit, num_simulations=100, played_cards=None, current_round=None, team_started=None):
-        """
-        Perform Monte Carlo simulations to estimate the best card to play based on the given hand.
-        Args:
-            my_hand: List of card IDs representing the player's hand
-            num_simulations: Number of simulations to perform
-            played_cards: List of cards already played in the game
-            current_round: Cards already played in the current trick
-            trump_suit: The trump suit for the current game
-            team_started = (sum(1 for card in obs.current_trick if card != -1 and obs.current_trick.index(card) in [0, 2]) > 0): Whether the player's team started the round
-        Returns:
-            A dictionary of estimated scores for each card in my_hand
-        """
-        if played_cards is None:
-            played_cards = []
-        if current_round is None:
-            current_round = []
-
-        # Initialize the root node for MCTS
-        root = Node_V4(state=(my_hand, played_cards, current_round, self.global_obs.declared_trump))
-
-        # Perform Monte Carlo Tree Search
-        max_depth = 9  # Set the desired depth for the tree search
-        best_action = self.monte_carlo_tree_search(root, max_depth)
-        return best_action
-
 
     def simulate_opponent_hand(self, my_hand, played_cards, hand_size=9, total_players=4):
         """
@@ -421,7 +193,6 @@ class TransformedMCTSAgent(Agent):
             opponent_hand: List of card IDs representing the opponent's hand
             lead_card: The card that has been led in the current trick
             trump_suit: The trump suit for the current game
-            current_round: The current cards played in the trick so far
         Returns:
             A card ID representing the opponent's play
         """
@@ -442,7 +213,7 @@ class TransformedMCTSAgent(Agent):
             if not non_trump_cards or lead_card is not None:
                 # Additionally, only play a trump if there are significant points in the trick
                 if lead_card is not None and (self.card_points(lead_card, trump_suit) > 0 or
-                                             any(self.card_points(card, trump_suit) > 0 for card in current_round)):
+                                              any(self.card_points(card, trump_suit) > 0 for card in current_round)):
                     return random.choice(trump_cards)
 
         # Otherwise, play a non-trump card (if available)
@@ -451,7 +222,9 @@ class TransformedMCTSAgent(Agent):
             return random.choice(non_trump_cards)
 
         # If no non-trump cards are available, play any card
-        return random.choice(opponent_hand)
+        if non_trump_cards:
+            return random.choice(opponent_hand)
+        return None
 
     def card_strength(self, card, trump_suit):
         """
@@ -481,15 +254,7 @@ class TransformedMCTSAgent(Agent):
         Returns:
             An integer representing the points of the card
         """
-        # cuz pythin is an asshole
-        # Convert trump_suit to a scalar if it's a NumPy array with a single value
-        try:
-            temp = trump_suit[0]
-            trump_suit = temp
-        except:
-            pass
-
-        if np.any(np.isin(trump_suit, [0, 1, 2, 3])):
+        if trump_suit in [0, 1, 2, 3]:  # Standard trump suits (Diamonds, Hearts, Spades, Clubs)
             if self.get_suit(card) == trump_suit:
                 if card % 9 == 3:  # Jack
                     return 20
