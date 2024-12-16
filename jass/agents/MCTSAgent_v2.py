@@ -7,6 +7,7 @@ import random
 import copy
 
 import numpy as np
+import time
 
 from jass.agents.Helpers.MCTS_v2 import MCTS
 from jass.agents.Helpers.Node import Node
@@ -21,9 +22,9 @@ from jass.game.rule_schieber import RuleSchieber
 
 
 class MCTSAgent(Agent):
-    def __init__(self, max_iterations=100):
+    def __init__(self, time_per_action=2):
         super().__init__()
-        self.determinizations = max_iterations
+        self.time_per_action = time_per_action
         self._rule = RuleSchieber()
 
     def generate_opponent_hands(self, obs):
@@ -98,7 +99,7 @@ class MCTSAgent(Agent):
 
     def action_play_card(self, obs: GameObservation) -> int:
         """
-        Determine the card to play using MCTS.
+        Determine the card to play using MCTS, with a fixed time budget for analysis.
         Args:
             obs: the game observation
 
@@ -106,22 +107,30 @@ class MCTSAgent(Agent):
             the card to play, int encoded as defined in jass.game.const
         """
         team_id = obs.player_view % 2
-        print(f"team_id: {team_id}")
         mcts = MCTS(obs.player_view, team_id)
         game_sim = self.determinize_observation(obs)
         root = Node(game_sim=copy.deepcopy(game_sim))
-
 
         # Get all valid moves from the current observation
         valid_moves = convert_one_hot_encoded_cards_to_int_encoded_list(
             RuleSchieber().get_valid_cards_from_obs(obs)
         )
 
-        # Iterate over each valid move
+        if len(valid_moves) == 1:
+            return valid_moves[0]
+
+        total_time = self.time_per_action  # seconds
+        start_time = time.time()
+        time_per_move = total_time / len(valid_moves)  # Divide time equally among moves
+
         for move in valid_moves:
+            move_start_time = time.time()
             move_node = Node(game_sim=copy.deepcopy(game_sim), parent=root, move=move)
             root.add_child(move_node)
-            for _ in range(self.determinizations):
+            simulations_explored = 0
+
+            while time.time() - move_start_time < time_per_move:
+                simulations_explored += 1
                 determinized_sim = self.determinize_observation(obs)
                 new_game_sim = mcts.simulate_move(determinized_sim, move)
                 determinization_node = Node(
@@ -133,6 +142,11 @@ class MCTSAgent(Agent):
                 outcome = mcts.simulate(determinization_node.game_sim)
                 mcts.backpropagate(determinization_node, outcome)
 
+                if time.time() - start_time >= total_time:
+                    break
+            print(f"simulations explored: {simulations_explored}")
+
         best_child = root.best_child(exploration_param=2)
         return best_child.move if best_child else None
+
 
