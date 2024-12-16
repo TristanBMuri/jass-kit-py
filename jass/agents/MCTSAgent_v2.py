@@ -93,6 +93,7 @@ class MCTSAgent(Agent):
         return game_sim
 
     def action_trump(self, obs: GameObservation) -> int:
+
         return DIAMONDS
 
     def action_play_card(self, obs: GameObservation) -> int:
@@ -104,9 +105,12 @@ class MCTSAgent(Agent):
         Returns:
             the card to play, int encoded as defined in jass.game.const
         """
-        mcts = MCTS(obs.player_view)
+        team_id = obs.player_view % 2
+        print(f"team_id: {team_id}")
+        mcts = MCTS(obs.player_view, team_id)
         game_sim = self.determinize_observation(obs)
         root = Node(game_sim=copy.deepcopy(game_sim))
+
 
         # Get all valid moves from the current observation
         valid_moves = convert_one_hot_encoded_cards_to_int_encoded_list(
@@ -131,57 +135,4 @@ class MCTSAgent(Agent):
 
         best_child = root.best_child(exploration_param=2)
         return best_child.move if best_child else None
-
-    # def action_play_card(self, obs: GameObservation) -> int:
-    #     """
-    #     Determine the card to play using MCTS.
-    #     Args:
-    #         obs: the game observation
-    #
-    #     Returns:
-    #         the card to play, int encoded as defined in jass.game.const
-    #     """
-    #     # print(f"playerview: {obs.player_view}")
-    #     mcts = MCTS(obs.player_view)
-    #     game_sim = self.determinize_observation(obs)
-    #     root = Node(game_sim=copy.deepcopy(game_sim))
-    #
-    #     # for all moves
-    #     # determinize n scenarios per move
-    #     # sum up outcomes
-    #     # profit
-    #     valid_moves = convert_one_hot_encoded_cards_to_int_encoded_list(
-    #         RuleSchieber().get_valid_cards_from_obs(obs))
-    #     for move in valid_moves:
-    #         for i in range(self.determinizations):
-    #             # print(f"root hands:\n {np.sum(root.game_sim.state.hands)}")
-    #             # print(f"Iteration {i}")
-    #             # leaf = mcts.selection(root)
-    #             # child = mcts.expansion(leaf)
-    #
-    #             mcts = MCTS(obs.player_view)
-    #             game_sim = self.determinize_observation(obs)
-    #             child = Node(game_sim=copy.deepcopy(game_sim))
-    #
-    #             new_game_sim = mcts.simulate_move(child.game_sim, move)
-    #
-    #             child_node = Node(game_sim=copy.deepcopy(new_game_sim), parent=child, move=move)
-    #             child.add_child(child_node)
-    #
-    #             if child_node:
-    #                 outcome = mcts.simulate(child_node.game_sim)
-    #                 mcts.backpropagate(child_node, outcome)
-    #             else:
-    #                 outcome = mcts.simulate(child.game_sim)
-    #                 mcts.backpropagate(child, outcome)
-    #
-    #     # print("unplayed cards", self.possible_cards(obs))
-    #
-    #     best_move = root.best_child(exploration_param=2).move
-    #     return best_move
-        # return np.random.choice(np.flatnonzero(valid_cards))
-
-
-
-
 
