@@ -1,59 +1,117 @@
+# HSLU
+#
+# Created by Thomas Koller on 7/28/2020
+#
+import logging
 import random
-from collections import namedtuple
+import copy
 
+import numpy as np
+import time
+
+from jass.agents.Helpers.MCTS_v2 import MCTS
+from jass.agents.Helpers.Node import Node
 from jass.agents.agent import Agent
 from jass.game.const import *
 from jass.game.game_observation import GameObservation
-from jass.game.game_rule import GameRule
 from jass.game.game_sim import GameSim
+from jass.game.game_state import GameState
 from jass.game.game_util import *
 from jass.game.rule_schieber import RuleSchieber
 
 
-class TransformedMCTSAgent(Agent):
-    def __init__(self):
-        # Use rule object to determine valid actions
+
+class MCTSAgent(Agent):
+    def __init__(self, time_per_action=2):
+        super().__init__()
+        self.time_per_action = time_per_action
         self._rule = RuleSchieber()
-        # init random number generator
-        self._rng = np.random.default_rng()
 
-        # own obs
-        self.global_obs = GameObservation()
+    def generate_opponent_hands(self, obs):
+        # random.seed(42)
+        possible_cards = [i for i in range(36)]
 
-    def get_dynamic_simulation_count(self, played_cards, current_round):
+        possible_cards = set(possible_cards) ^ set(convert_one_hot_encoded_cards_to_int_encoded_list(obs.hand))
+        if len(obs.tricks[obs.tricks > 0]):
+            possible_cards = set(possible_cards) ^ set(obs.tricks[obs.tricks != -1])
+        unplayed_cards = np.full((1, 4), 9 - obs.nr_tricks)[0]
+
+        # iterate backwards through players starting from the person who started the trick
+        for i in range(obs.trick_first_player[obs.nr_tricks],
+                       obs.trick_first_player[obs.nr_tricks] - obs.nr_cards_in_trick, -1):
+            unplayed_cards[i % 4] -= 1  # modulo to loop back to the end, e.g. 1, 0, 3, 2
+        # print(f"unplayed_cards: {unplayed_cards}")
+
+        hands = np.zeros(shape=[4, 36], dtype=np.int32)
+        hands[obs.player_view] = obs.hand
+
+        for player_id in range(4):
+
+            for i in range(unplayed_cards[player_id]):
+                if player_id == obs.player_view:
+                    continue
+                int_possible_cards = list(possible_cards)
+                card_choice = random.choice(int_possible_cards)
+                possible_cards.remove(card_choice)
+
+                hands[player_id] += get_cards_encoded(card_choice)
+        return hands
+    def determinize_observation(self, game_obs: GameObservation) -> GameSim:
         """
-        Determine the number of simulations dynamically based on the game state.
-        Args:
-            played_cards: List of cards already played in the game
-            current_round: Cards already played in the current trick
-        Returns:
-            The number of simulations to perform
+        Create a GameSim object from an existing GameObservation object. The opponent hands are generated randomly.
         """
-        remaining_cards = 36 - len(played_cards) - len(current_round)
-        if remaining_cards > 20:
-            return 200  # Early in the game, use more simulations for better accuracy
-        elif remaining_cards > 10:
-            return 100  # Mid game, balance between accuracy and speed
-        else:
-            return 50  # Late game, fewer simulations to speed up decisions
+        # Create a new GameSim instance with the given rule
+
+        # Set up the game state using the observation
+        game_state = GameState()
+
+        # Map properties from GameObservation to GameState
+        game_state.dealer = game_obs.dealer
+        game_state.player = game_obs.player
+        game_state.trump = game_obs.trump
+        game_state.forehand = game_obs.forehand
+        game_state.declared_trump = game_obs.declared_trump
+
+        # Set tricks, trick winners, points, and related data
+        game_state.current_trick = game_obs.current_trick
+        game_state.tricks = game_obs.tricks.copy()
+        game_state.trick_winner = game_obs.trick_winner.copy()
+        game_state.trick_points = game_obs.trick_points.copy()
+        game_state.trick_first_player = game_obs.trick_first_player.copy()
+        game_state.nr_tricks = game_obs.nr_tricks
+        game_state.nr_cards_in_trick = game_obs.nr_cards_in_trick
+        game_state.nr_played_cards = game_obs.nr_played_cards
+        game_state.points = game_obs.points.copy()
+
+        # Generate the hands for all players based on the observation
+        hands = self.generate_opponent_hands(game_obs)
+        game_state.hands = hands
+
+        game_sim = GameSim(RuleSchieber())
+        game_sim.init_from_state(game_state)
+
+        # Return the initialized GameSim object
+        return game_sim
 
     def action_trump(self, obs: GameObservation) -> int:
+
         """
-        Select the trump suit based on the highest Monte Carlo scores for each possible trump.
-        Args:
-            obs: the current game observation
-        Returns:
-            trump action
-        """
+                Select the trump suit based on the highest Monte Carlo scores for each possible trump.
+                Args:
+                    obs: the current game observation
+                Returns:
+                    trump action
+                """
 
         # Initialize the trump scores for each possible trump suit
         trump_scores = {DIAMONDS: 0, HEARTS: 0, SPADES: 0, CLUBS: 0, OBE_ABE: 0, UNE_UFE: 0}
 
         # Evaluate each trump by running Monte Carlo simulations
+        time_per_trump = 9.0 / len(trump_scores)
         for trump_suit in trump_scores.keys():
             trump_scores[trump_suit] = sum(self.monte_carlo_simulate(
                 my_hand=np.flatnonzero(obs.hand),
-                num_simulations=100,
+                time_limit=time_per_trump,
                 played_cards=[card for trick in obs.tricks for card
                               in trick if card != -1],
                 current_round=obs.current_trick[
@@ -67,49 +125,72 @@ class TransformedMCTSAgent(Agent):
             # If no trump has a reasonable score, push
             if trump_scores[best_trump] < 26:  # Threshold
                 return PUSH
-
+        print(f"Playing trump {best_trump}")
         return best_trump
 
     def action_play_card(self, obs: GameObservation) -> int:
         """
-        Select the card to play using Monte Carlo simulations to estimate the best option.
+        Determine the card to play using MCTS, with a fixed time budget for analysis.
         Args:
-            obs: The observation of the jass game for the current player
+            obs: the game observation
+
         Returns:
-            card to play
+            the card to play, int encoded as defined in jass.game.const
         """
+        team_id = obs.player_view % 2
+        mcts = MCTS(obs.player_view, team_id)
+        game_sim = self.determinize_observation(obs)
+        root = Node(game_sim=copy.deepcopy(game_sim))
 
-        # Get the valid cards the player can play from the current observation
-        valid_cards = self._rule.get_valid_cards_from_obs(obs)
+        # Get all valid moves from the current observation
+        valid_moves = convert_one_hot_encoded_cards_to_int_encoded_list(
+            RuleSchieber().get_valid_cards_from_obs(obs)
+        )
 
-        my_hand = np.flatnonzero(valid_cards)  # Convert one-hot encoded valid cards to card IDs
-        # return random.choice(my_hand)
-        # Extract the played cards from the history of all tricks so far
-        played_cards = [card for trick in obs.tricks for card in trick if card != -1]
-        current_round = obs.current_trick[
-            obs.current_trick != -1]  # Get the currently played cards in the ongoing trick
+        if len(valid_moves) == 1:
+            return valid_moves[0]
 
-        # Use Monte Carlo simulation to determine the card to play
-        team_started = (obs.current_trick.tolist().count(-1) % 2 == 0)
-        num_simulations = self.get_dynamic_simulation_count(played_cards, current_round)
-        estimated_scores = self.monte_carlo_simulate(my_hand=my_hand, played_cards=played_cards,
-                                                     current_round=current_round,
-                                                     trump_suit=obs.declared_trump, team_started=team_started,
-                                                     num_simulations=num_simulations)
-        best_card = max(estimated_scores, key=estimated_scores.get)
-        return best_card
+        total_time = self.time_per_action  # seconds
+        start_time = time.time()
+        time_per_move = total_time / len(valid_moves)  # Divide time equally among moves
 
-    def monte_carlo_simulate(self, my_hand, trump_suit, num_simulations=100, played_cards=None, current_round=None,
+        for move in valid_moves:
+            move_start_time = time.time()
+            move_node = Node(game_sim=copy.deepcopy(game_sim), parent=root, move=move)
+            root.add_child(move_node)
+            simulations_explored = 0
+
+            while time.time() - move_start_time < time_per_move:
+                simulations_explored += 1
+                determinized_sim = self.determinize_observation(obs)
+                new_game_sim = mcts.simulate_move(determinized_sim, move)
+                determinization_node = Node(
+                    game_sim=copy.deepcopy(new_game_sim),
+                    parent=move_node,
+                    move=move
+                )
+                move_node.add_child(determinization_node)
+                outcome = mcts.simulate(determinization_node.game_sim)
+                mcts.backpropagate(determinization_node, outcome)
+
+                if time.time() - start_time >= total_time:
+                    break
+            print(f"move {move}; simulations explored: {simulations_explored}")
+
+        best_child = root.best_child(exploration_param=2)
+        return best_child.move if best_child else None
+
+    def monte_carlo_simulate(self, my_hand, trump_suit, time_limit=5.0, played_cards=None, current_round=None,
                              team_started=None):
         """
         Perform Monte Carlo simulations to estimate the best card to play based on the given hand.
         Args:
             my_hand: List of card IDs representing the player's hand
-            num_simulations: Number of simulations to perform
+            time_limit: Maximum time allowed for simulations (in seconds)
             played_cards: List of cards already played in the game
             current_round: Cards already played in the current trick
             trump_suit: The trump suit for the current game
-            team_started = (sum(1 for card in obs.current_trick if card != -1 and obs.current_trick.index(card) in [0, 2]) > 0): Whether the player's team started the round
+            team_started: Whether the player's team started the round
         Returns:
             A dictionary of estimated scores for each card in my_hand
         """
@@ -121,8 +202,18 @@ class TransformedMCTSAgent(Agent):
         win_counts = {card: 0 for card in my_hand}
         point_totals = {card: 0 for card in my_hand}
 
+        total_time = time_limit  # total time budget
+        start_time = time.time()
+        time_per_card = total_time / my_hand.size if my_hand.size > 0 else 0
+
+
         for card in my_hand:
-            for _ in range(num_simulations):
+            card_start_time = time.time()
+            simulations_explored = 0
+
+            while time.time() - card_start_time < time_per_card:
+                simulations_explored += 1
+
                 # Simulate the opponent's hand by excluding played cards and current hand
                 opponent_hand = self.simulate_opponent_hand(my_hand, played_cards)
 
@@ -131,11 +222,11 @@ class TransformedMCTSAgent(Agent):
                     opponent_play = random.choice(opponent_hand)
                 else:
                     # If we are responding to a lead, opponents play with a heuristic to maximize their chance of winning
-                    lead_card = current_round[0] if current_round.size > 0 else None
+                    lead_card = current_round[0] if current_round else None
                     opponent_play = self.simulate_opponent_play(opponent_hand, lead_card, trump_suit, current_round)
 
                 # Determine if we are playing the first card or responding to a round
-                if current_round.size > 0:
+                if current_round:
                     lead_suit = self.get_suit(current_round[0])
                     if self.get_suit(card) != lead_suit and any(self.get_suit(c) == lead_suit for c in my_hand):
                         continue  # Skip if we can't follow suit
@@ -147,9 +238,15 @@ class TransformedMCTSAgent(Agent):
                     point_totals[card] += self.card_points(card, trump_suit) + self.card_points(opponent_play,
                                                                                                 trump_suit)
 
+                # Stop if the total allocated time is exceeded
+                if time.time() - start_time >= total_time:
+                    break
+
+            print(f"Card {card}; simulations explored: {simulations_explored}")
+
         # Estimate win rate and average points for each card
-        estimated_win_rate = {card: wins / num_simulations for card, wins in win_counts.items()}
-        estimated_points = {card: points / num_simulations for card, points in point_totals.items()}
+        estimated_win_rate = {card: wins / max(1, sum(win_counts.values())) for card, wins in win_counts.items()}
+        estimated_points = {card: points / max(1, sum(win_counts.values())) for card, points in point_totals.items()}
 
         # Combine win rate and point estimate to make a decision
         combined_scores = {card: (estimated_win_rate[card] * 0.6) + (estimated_points[card] * 0.4) for card in my_hand}
@@ -287,3 +384,5 @@ class TransformedMCTSAgent(Agent):
             An integer representing the suit of the card
         """
         return card // 9
+
+

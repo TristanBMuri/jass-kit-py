@@ -20,7 +20,7 @@ class TransformedMCAgentTests(unittest.TestCase):
     def test_game_skill(self):
         rule = RuleSchieber()
         game = GameSim(rule=rule)
-        game_count = 30
+        game_count = 1000
 
         np.random.seed(5)
         game.init_from_cards(hands=deal_random_hand(), dealer=NORTH)
