@@ -6,6 +6,7 @@ import logging
 
 from jass.agents.agent_random_schieber import AgentRandomSchieber
 from jass.agents.agent_rule_based import AgentRuleBased
+from jass.agents.MCTSAgent_merged import MCTSAgent
 from jass.service.player_service_app import PlayerServiceApp
 
 
@@ -27,8 +28,7 @@ def create_app():
     # app.config.from_pyfile('my_player_service.cfg', silent=False)
 
     # add some players
-    app.add_player('Neural_Shufflers', AgentRuleBased())
-    app.add_player('Neural_Shufflers', AgentRuleBased())
+    app.add_player('Neural_Shufflers', MCTSAgent(9))
 
     return app
 

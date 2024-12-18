@@ -107,7 +107,7 @@ class MCTSAgent(Agent):
         trump_scores = {DIAMONDS: 0, HEARTS: 0, SPADES: 0, CLUBS: 0, OBE_ABE: 0, UNE_UFE: 0}
 
         # Evaluate each trump by running Monte Carlo simulations
-        time_per_trump = 9.0 / len(trump_scores)
+        time_per_trump = self.time_per_action / len(trump_scores)
         for trump_suit in trump_scores.keys():
             trump_scores[trump_suit] = sum(self.monte_carlo_simulate(
                 my_hand=np.flatnonzero(obs.hand),
